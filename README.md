@@ -45,6 +45,7 @@
 - `reference/copilot-discovery-order.md`: Copilot 文件发现目录与顺序
 - `reference/copilot-directory-structure.md`: `~/.copilot` 本地目录结构分析
 - `reference/multi-agent-architecture-mermaid.md`: 多 Agent 协作架构图与流程图（Mermaid）
+- `reference/multi-agent-patterns-research.md`: 多 Agent 组合模式与设计模式调研
 
 ## 系统提示词模板
 
