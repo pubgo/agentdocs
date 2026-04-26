@@ -1,0 +1,9 @@
+- Go 依赖迁移到 internal：先复制最小兼容 API 到 internal 包，再替换 import，最后 go mod tidy + go test ./... 验证。
+- 对 CLI 输出样式库迁移时，优先保持 API 兼容，避免业务逻辑改动。
+- 运行 Go 回归命令前确认 cwd 在仓库根目录；子目录执行会导致相对包路径不存在误报。
+- VS Code 工作区可用 problems.exclude 屏蔽生成目录（如 pkg/gen/swagger）的诊断噪音，保留真实业务错误可见性。
+- Proto 变更后先补齐 service/rpc 注释再生成代码，可避免 protolint 的“should have documentation”阻断。
+- Go 中不要对 protobuf message 做结构体值拷贝（含 `protoimpl.MessageState`/`sync.Mutex`）；需要快照时用 `proto.Clone`。
+- 用户核心目标（welogin/coagent）：以 Copilot SDK 为主交互通道；数据库主要用于会话/事件的记录与查询展示，不作为主执行引擎。
+- Go 大文件拆分时，先迁移函数再删除原实现；若出现 redeclared，优先排查是否在新旧文件同时保留了同名函数。
+- Copilot SDK 新版在 Create/Resume Session 时要求显式 `OnPermissionRequest`；未设置会在运行时直接失败，应统一传 `copilot.PermissionHandler.ApproveAll`（或自定义处理器）。
