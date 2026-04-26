@@ -44,6 +44,7 @@
 - `reference/prompt-system-v1-generator.md`: 可填空 Prompt System v1 生成器
 - `reference/copilot-discovery-order.md`: Copilot 文件发现目录与顺序
 - `reference/copilot-directory-structure.md`: `~/.copilot` 本地目录结构分析
+- `reference/multi-agent-architecture-mermaid.md`: 多 Agent 协作架构图与流程图（Mermaid）
 
 ## 系统提示词模板
 
