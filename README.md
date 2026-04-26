@@ -42,6 +42,8 @@
 - `reference/template-modules-glossary.md`: 模板标签模块详解字典
 - `reference/template-modules-dependency.md`: 模板模块依赖关系图与组装顺序
 - `reference/prompt-system-v1-generator.md`: 可填空 Prompt System v1 生成器
+- `reference/copilot-discovery-order.md`: Copilot 文件发现目录与顺序
+- `reference/copilot-directory-structure.md`: `~/.copilot` 本地目录结构分析
 
 ## 系统提示词模板
 
