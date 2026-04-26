@@ -12,6 +12,10 @@
 - [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills)
 - [Yeachan-Heo/oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex)
 - [obra/superpowers](https://github.com/obra/superpowers/tree/main)
+- [菜鸟教程 - AI Agent(智能体) 教程](https://www.runoob.com/ai-agent/ai-agent-tutorial.html)
+- [Hello-Agents (Datawhale)](https://hello-agents.datawhale.cc/#/)
+- [Microsoft Learn - Agent Framework 文档](https://learn.microsoft.com/zh-cn/agent-framework/)
+- [ADK Wiki - Agent Development Kit 中文文档](https://adk.wiki/)
 
 ## 说明
 
