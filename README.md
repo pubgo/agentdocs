@@ -38,3 +38,13 @@
 ## 参考文档
 
 - `reference/awesome.md`: Awesome Skills 参考入口
+- `reference/templates-analysis.md`: templates 三文件深度分析
+- `reference/template-modules-glossary.md`: 模板标签模块详解字典
+- `reference/template-modules-dependency.md`: 模板模块依赖关系图与组装顺序
+- `reference/prompt-system-v1-generator.md`: 可填空 Prompt System v1 生成器
+
+## 系统提示词模板
+
+- `templates/system.core.md`: 系统提示词核心层（身份、边界、优先级、DoD）
+- `templates/system.runtime.md`: 运行时执行层（工具策略、改动纪律、验证门）
+- `templates/orchestration.md`: 编排层（模式选择、委派协议、工作流闭环）
