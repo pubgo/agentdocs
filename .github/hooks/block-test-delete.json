@@ -1,0 +1,11 @@
+{
+    "hooks": {
+        "PreToolUse": [
+            {
+                "type": "command",
+                "command": "if echo \"$TOOL_INPUT\" | grep -qE '_test\\.go\"?$' && [ \"$TOOL_NAME\" = 'delete_file' ]; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"禁止删除测试文件。如需删除请获得用户明确确认。\"}}'; exit 0; fi",
+                "timeout": 5
+            }
+        ]
+    }
+}

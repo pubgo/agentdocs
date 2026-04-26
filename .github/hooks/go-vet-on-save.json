@@ -1,0 +1,12 @@
+{
+    "hooks": {
+        "PostToolUse": [
+            {
+                "type": "command",
+                "command": "if echo \"$TOOL_INPUT\" | grep -qE '\\.go\"?$'; then cd \"$WORKSPACE_FOLDER\" && go vet ./... 2>&1 | head -20; fi",
+                "osx": "if echo \"$TOOL_INPUT\" | grep -qE '\\.go\"?$'; then cd \"$WORKSPACE_FOLDER\" && go vet ./... 2>&1 | head -20; fi",
+                "timeout": 30
+            }
+        ]
+    }
+}
