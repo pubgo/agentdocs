@@ -8,6 +8,7 @@
 - `prompts/`: 各类提示词文档（`*.prompt.md`、角色提示词等）
 - `skills/`: Skill 目录与实现说明（通常包含 `SKILL.md`）
 - `instructions/`: 规范与流程说明（开发、测试、发布、评审等）
+- `reference/`: 外部参考资料索引与收藏
 - `hooks/`: 本地或协作流程使用的钩子配置
 - `workflows/`: CI/CD 或自动化流程定义
 - `templates/`: 模板类文档（如系统提示词模板）
@@ -32,3 +33,7 @@
 - 新增规范文档时优先放到 `instructions/`
 
 建议保持目录命名稳定，避免后续自动迁移或脚本同步时出现重复目录。
+
+## 参考文档
+
+- `reference/awesome.md`: Awesome Skills 参考入口
