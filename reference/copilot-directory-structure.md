@@ -170,3 +170,108 @@ session-state/<session-id>/
 - 本文是基于当前机器快照，不同版本或不同运行方式下目录结构可能变化。
 - 文件语义有部分为工程推测，建议结合具体日志内容做二次确认。
 
+---
+
+## 6) Copilot Chat 全局数据目录（VS Code User）
+
+路径：
+
+- `/Users/barry/Library/Application Support/Code/User/globalStorage/github.copilot-chat`
+
+这是 VS Code 侧 Copilot Chat 的“全局存储区”（跨工作区共享），和 `~/.copilot/session-state`（会话级目录）是互补关系。
+
+### 6.1 顶层内容（当前样本）
+
+- `ask-agent/`
+- `explore-agent/`
+- `plan-agent/`
+- `memory-tool/`
+- `copilotCli/`
+- `copilot-cli-images/`
+- `debugCommand/`
+- `logContextRecordings/`
+- `commandEmbeddings.json`
+- `settingEmbeddings.json`
+- `toolEmbeddingsCache.bin`
+
+### 6.2 关键文件/目录解释
+
+## `ask-agent/`, `explore-agent/`, `plan-agent/`
+
+可见文件示例：
+
+- `Ask.agent.md`
+- `Explore.agent.md`
+- `Plan.agent.md`
+
+说明（推测）：
+
+- 内置/默认 Agent 提示词模板缓存
+- 用于 Chat 模式下角色化执行入口
+
+## `memory-tool/`
+
+可见文件示例：
+
+- `memory-tool/memories/patterns.md`
+
+说明（推测）：
+
+- 记忆工具默认模式文档与提示词片段
+- 作为“长期记忆能力”的规则来源之一
+
+## `copilotCli/`
+
+可见文件示例：
+
+- `copilot`（可执行文件）
+- `copilotCLIShim.js`
+- `copilotCLIShim.ps1`
+- `copilotcli.session.metadata.json`
+
+说明（推测）：
+
+- Copilot CLI 的桥接运行组件与 session 元数据
+- 其中 `copilotcli.session.metadata.json` 记录了大量 session-id -> `writtenToDisc` 状态
+- 这些 session-id 与 `~/.copilot/session-state/` 下目录有明显对应关系
+
+## `debugCommand/`
+
+可见文件示例：
+
+- `copilotDebugCommand.js`
+- `copilot-debug`
+
+说明（推测）：
+
+- 调试命令入口与脚本
+- 可能用于开发/诊断场景下的命令桥接
+
+## `commandEmbeddings.json`, `settingEmbeddings.json`, `toolEmbeddingsCache.bin`
+
+说明（推测）：
+
+- 命令、设置、工具相关 embedding/检索缓存
+- 用于提升命令建议、检索召回或提示词路由效率
+
+### 6.3 与 `~/.copilot/session-state` 的关系
+
+可理解为：
+
+- `globalStorage/github.copilot-chat`：全局运行资产、模板、缓存、CLI 桥接元数据
+- `~/.copilot/session-state`：每次会话的状态与工件落盘
+
+两者协同：
+
+1. 全局层提供能力与索引（模板/embedding/shim）
+2. 会话层承接具体会话执行数据（events/checkpoints/files）
+
+### 6.4 排障建议
+
+当你遇到 Copilot Chat 行为异常时，可按这个顺序看：
+
+1. `~/.copilot/logs/`（进程日志）
+2. `~/.copilot/session-state/<id>/events.jsonl`（会话事件）
+3. `.../globalStorage/github.copilot-chat/copilotCli/copilotcli.session.metadata.json`（会话写盘状态）
+4. `.../globalStorage/github.copilot-chat/*Embeddings*`（缓存是否异常膨胀或损坏）
+
