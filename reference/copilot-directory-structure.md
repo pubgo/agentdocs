@@ -45,6 +45,74 @@
 - `events.jsonl` 用于记录会话事件流
 - `checkpoints/` 与 `files/` 用于阶段快照与会话工件
 
+### `session-state` 详细结构（重点）
+
+按当前机器样本，典型会话目录结构如下：
+
+```text
+session-state/<session-id>/
+├─ workspace.yaml
+├─ checkpoints/
+│  └─ index.md
+├─ files/
+├─ research/
+├─ vscode.metadata.json        # 部分会话存在
+├─ events.jsonl                # 部分会话存在
+└─ rewind-snapshots/           # 极少数会话存在
+```
+
+#### 字段/目录逐项说明
+
+- `workspace.yaml`
+  - 几乎所有会话都有（本机样本 81/85）
+  - 作用：记录会话关联的工作区上下文（路径、会话工作配置）
+
+- `checkpoints/`
+  - 几乎所有会话都有（本机样本 81/85）
+  - 常见文件 `index.md`
+  - 作用：会话阶段快照索引，便于恢复和回溯
+
+- `files/`
+  - 几乎所有会话都有（本机样本 81/85）
+  - 作用：会话中间工件目录（非仓库正式文件）
+
+- `research/`
+  - 几乎所有会话都有（本机样本 81/85）
+  - 作用：检索/分析类中间产物缓存目录
+
+- `vscode.metadata.json`
+  - 部分会话有（本机样本 52/85）
+  - 作用：IDE 侧元数据（如会话与编辑器上下文关联）
+
+- `events.jsonl`
+  - 部分会话有（本机样本 32/85）
+  - 作用：事件流日志（按行 JSON），用于精细回放执行过程
+
+- `rewind-snapshots/`
+  - 少量会话存在（本机样本 2/85）
+  - 作用：回滚/重放相关快照目录
+
+#### 两类 session-id 的差异
+
+- `uuid-like`（例如 `2bbc5bea-e2bb-...`）
+  - 常见于普通会话
+  - 更容易出现 `events.jsonl` 与 `rewind-snapshots`
+
+- `workflow-*`（例如 `workflow-caadb300`）
+  - 常见于工作流编排会话
+  - 结构更“流程化”，通常以 `workspace/checkpoints/files/research` 为核心
+
+#### 可以怎么用
+
+- 定位“某次会话做了什么”：
+  1. 先看对应目录下 `events.jsonl`（如果存在）
+  2. 再看 `checkpoints/index.md` 的阶段索引
+  3. 最后结合 `files/` 与 `research/` 看中间产物
+
+- 排查“会话恢复异常”：
+  - 优先检查 `workspace.yaml`、`checkpoints/` 是否完整
+  - 再对照 `logs/process-*.log` 看运行时错误
+
 ## `logs/`
 
 - 数量：`178`（扫描时）
