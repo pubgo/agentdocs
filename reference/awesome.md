@@ -5,6 +5,7 @@
 - [ForceInjection/awesome-skills](https://github.com/ForceInjection/awesome-skills)
 - [Awesome GitHub Copilot](https://awesome-copilot.github.com/)
 - [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main)
+- [affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code?tab=readme-ov-file)
 
 ## 说明
 

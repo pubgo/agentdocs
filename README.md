@@ -12,6 +12,7 @@
 - `hooks/`: 本地或协作流程使用的钩子配置
 - `workflows/`: CI/CD 或自动化流程定义
 - `templates/`: 模板类文档（如系统提示词模板）
+- `tools/`: 工具清单与工具使用说明
 - `missions/`: 任务包或实验任务集合
 - `memory-tool/`: 记忆模式与相关文档
 - `.version/`: 版本号与 changelog
