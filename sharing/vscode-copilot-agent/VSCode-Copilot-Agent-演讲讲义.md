@@ -487,17 +487,203 @@ SDK 实现的是从"个人工具"到"平台能力"的跨越。
 
 > 这是最关键的板块。前面所有能力如果不形成闭环，就无法离开 demo 阶段。
 
-## 主题 12：Workflow
+## 主题 12：Workflow——coagent 工作流引擎
 
-缺少 Workflow 的 Agent 缺乏稳定性保障——本次任务成功，不代表下次也能成功。Workflow 提供的是**流程级的确定性**：**Plan → Execute → Verify**。
+Agent 单次对话的成功是偶发的。Workflow 提供的是**流程级的确定性**——把 Agent 的能力编排在一条可定义、可回放、可审计的流水线中。
 
-三个必须配置的要素：
+我们在 coagent 中实现了一套完整的 Workflow Engine。下面从架构、执行模型、实际案例三个层面来讲解。
 
-1. **可写范围**：限制 Agent 可以修改的文件和目录
-2. **强制验证**：每步完成后必须通过的检查项
-3. **失败回退**：出错时的回滚策略，而非继续执行
+### 12.1 核心概念：定义 vs 运行
 
-在 production 相关的流程中使用 Agent，Workflow 是前提条件。
+Workflow 分为两个核心对象：
+
+| 对象                   | 说明                                                     | 类比                |
+| ---------------------- | -------------------------------------------------------- | ------------------- |
+| **WorkflowDefinition** | 声明式的步骤图：先做什么、再做什么、条件分支怎么走       | Docker Compose 文件 |
+| **WorkflowRun**        | 一次具体的执行实例：当前在哪一步、变量值是什么、历史输出 | 容器运行时          |
+
+一个 Definition 可以被多次 Start，每次 Start 产生一个 Run。
+
+### 12.2 WorkflowDefinition 结构
+
+```go
+type WorkflowDefinition struct {
+    ID            string
+    Name          string
+    Model         string            // 默认模型
+    SystemMessage string            // 工作流级系统提示词
+    EnableRLM     bool              // 是否注入 eval_expr 工具
+    Variables     map[string]string // 默认变量
+    Steps         []WorkflowStep
+    EntryStep     string            // 入口步骤 ID
+    MaxSteps      int               // 安全上限，默认 50
+}
+```
+
+每个步骤支持 **六种类型**，覆盖从 AI 推理到 Shell 脚本到人工审批的全场景：
+
+| 步骤类型   | 说明                                                   | 典型用途                          |
+| ---------- | ------------------------------------------------------ | --------------------------------- |
+| `ai`       | 将 InputTemplate 发送给 Copilot Session，收集 LLM 输出 | 代码审查、文本生成、分析推理      |
+| `shell`    | 执行 Shell 命令，捕获 stdout/stderr                    | 收集 git diff、运行测试、执行构建 |
+| `expr`     | 执行 expr-lang 表达式，纯计算无副作用                  | JSON 解析、条件判断、数据转换     |
+| `starlark` | 执行 Starlark 脚本（Python 子集）                      | 复杂数据处理                      |
+| `approval` | 暂停执行，等待人工审批                                 | 高风险操作前的人工确认            |
+| `parallel` | 并行执行多个子步骤                                     | 多文件并行审查                    |
+
+每个步骤还可配置：
+
+```go
+type WorkflowStep struct {
+    ID            string
+    Type          string            // ai|shell|expr|starlark|approval|parallel
+    InputTemplate string            // 消息模板，支持 {{变量}} 插值
+    CommandTmpl   string            // Shell 命令模板
+    Fields        map[string]string // 从输出中提取字段到变量
+    Conditions    []StepCondition   // 条件分支
+    DefaultNext   string            // 默认下一步（"$exit" = 结束）
+    RetryLimit    int               // 失败重试次数
+    Timeout       string            // 超时时间，如 "5m"
+}
+```
+
+### 12.3 条件分支与流程控制
+
+步骤执行完后，引擎按顺序评估 `Conditions`，决定下一步的走向：
+
+```go
+type StepCondition struct {
+    Expr   string  // expr-lang 表达式，如 contains(output, "APPROVE")
+    Action string  // "goto" | "exit" | "retry"
+    Goto   string  // 目标步骤 ID
+}
+```
+
+决策优先级：`条件匹配 → DefaultNext → $exit`。这形成了一个**有向图**，而非简单的线性流水线。举个例子——代码审查工作流中：
+
+```
+gather(shell) → review(ai) → 条件判断：
+  ├─ 输出包含 "APPROVE" → submit(expr) → 结束
+  ├─ 输出包含 "REQUEST_CHANGES" → submit(expr) → 结束
+  └─ 默认 → submit(expr) → 结束
+```
+
+### 12.4 执行引擎：executeLoop
+
+`WorkflowEngine` 是执行核心。启动流程：
+
+```
+StartWorkflow
+├── 从 Registry 取定义
+├── 合并默认变量 + 调用方变量
+├── 校验必填变量
+├── 预编译 expr/starlark 步骤（preflight，语法错误立即失败）
+├── 创建上下文目录 CtxDir
+├── ensureWorkflowSession（创建/恢复 Copilot Session）
+└── 后台 goroutine → executeLoop
+```
+
+`executeLoop` 的主循环逻辑：
+
+```
+for run.Status == Running:
+  ├── 检查取消信号
+  ├── 检查 MaxSteps 安全上限
+  ├── 找到当前步骤
+  ├── 广播 step_started 事件
+  ├── executeStep（分派到 ai/shell/expr/starlark/approval/parallel）
+  ├── afterStep：写输出到 CtxDir，提取 Fields 到 Variables
+  ├── evaluateConditions：决定 goto/exit/retry
+  ├── 记录 StepHistory + 审计
+  ├── 广播 step_completed 事件
+  └── 进入下一步 or 终态
+```
+
+**关键设计决策**：LLM 不控制流程。步骤的执行顺序由引擎根据定义驱动，LLM 只负责在 AI 步骤中生成输出。这保证了流程的确定性。
+
+### 12.5 安全与约束机制
+
+| 机制           | 实现                       | 作用                                         |
+| -------------- | -------------------------- | -------------------------------------------- |
+| MaxSteps       | 默认 50，可配置            | 防止死循环                                   |
+| Timeout        | step 级超时，Shell 默认 5m | 防止单步卡死                                 |
+| RetryLimit     | step 级重试上限            | 失败后有限重试，超限即终止                   |
+| Preflight 校验 | expr/starlark 预编译       | 语法错误在启动前暴露，不浪费 Session         |
+| Shell 输出截断 | stdout/stderr 各 512KB     | 防止内存溢出                                 |
+| 审批门         | `approval` 步骤类型        | 高风险操作前必须人工确认                     |
+| 审计链路       | run/step/artifact 全记录   | 完整可追溯                                   |
+| 崩溃恢复       | `RecoverActiveRuns`        | 重启后将中断的 run 标记为 failed，不静默丢失 |
+
+### 12.6 Session 集成
+
+Workflow 为每个 Run 创建独立的 Copilot Session：
+
+```go
+func (e *WorkflowEngine) ensureWorkflowSession(...) {
+    // 1. 构建系统提示词
+    // 2. 注入 skills、agents、MCP servers
+    // 3. 如果 EnableRLM，注入 eval_expr 工具 + 排除默认工具
+    // 4. 创建或恢复 Session
+}
+```
+
+Session 复用贯穿整个 Run 生命周期——AI 步骤共享会话上下文，前一步的输出可以作为后续步骤的背景知识。
+
+### 12.7 变量系统与上下文传递
+
+步骤之间通过**变量系统**传递数据：
+
+1. **InputTemplate**：用 `{{变量名}}` 引用变量，引擎渲染后作为步骤输入
+2. **Fields**：从步骤输出中提取 JSON 字段，写入变量供后续步骤使用
+3. **CtxDir**：每步输出写入上下文目录（`step-{id}.output`），后续步骤可通过 `ctx("step-id")` 函数读取
+
+```
+Step A (shell)
+  输出: {"repo": "myorg/myrepo", "pr_number": "42"}
+  Fields: {"repo": "repo", "pr_number": "pr_number"}
+       ↓
+Step B (ai)
+  InputTemplate: "请审查 {{repo}} 的 PR #{{pr_number}}"
+  渲染后: "请审查 myorg/myrepo 的 PR #42"
+```
+
+### 12.8 实际案例：Code Review Workflow
+
+我们在 coagent 中内置了完整的 Code Review Workflow，它包含以下步骤：
+
+```
+gather (shell)     → 执行 Shell 脚本，收集 repo/PR/diff 信息
+    ↓
+review (ai)        → 将收集到的信息发送给 LLM，生成结构化审查意见
+    ↓
+submit (expr)      → 解析审查输出，提交到 GitHub PR
+```
+
+其中 `gather` 步骤的 Shell 脚本会自动检测：
+- 当前仓库和分支
+- 是否存在 PR（通过 `gh` CLI）
+- diff 范围、变更文件列表、文件级统计
+
+`review` 步骤的系统提示词严格约束输出格式——必须返回 JSON 对象，包含 summary、event、comments，每条 comment 必须带分类标签。
+
+这种 shell 收集 → AI 分析 → expr 提交的模式可以复用到很多场景：日志分析、安全扫描、文档生成等。
+
+### 12.9 运维能力
+
+Workflow 不仅支持启动和取消，还提供了多种运维操作：
+
+| 操作               | 说明                                     |
+| ------------------ | ---------------------------------------- |
+| **Start**          | 从入口步骤开始执行                       |
+| **Cancel**         | 取消正在运行的 Run                       |
+| **Resume**         | 从失败/停止的步骤继续执行                |
+| **Restart**        | 重置变量，从入口步骤重新执行（Round +1） |
+| **Replay**         | 从指定步骤重放到指定步骤（调试用）       |
+| **Approve/Reject** | 对审批步骤进行人工决策                   |
+
+每次 Restart 会递增 Round 计数，变量重置为定义默认值 + 初始输入快照。这意味着**每次重跑的条件一致**，输出差异可以归因于 LLM 的非确定性。
+
+> **🎬 现场演示：** 打开 coagent 的 Workflow 面板，运行 Code Review Workflow，观察步骤执行、变量传递、条件分支、审计记录。
 
 ---
 
