@@ -735,7 +735,120 @@ cfg.ExcludedTools = rlmExcludedTools
 - **表达式复杂度限制**：防止生成过于复杂的脚本
 - **输出体积限制**：防止内存溢出
 
-> **🎬 现场演示：** 查看 `rlm.go` 中的工具注入和安全约束代码，运行一个 `EnableRLM + eval_expr` 实际场景。
+### eval_expr 的能力范围
+
+RLM 模式下 Agent 唯一可用的工具是 `eval_expr`，它提供了一套受控的函数集：
+
+| 类别       | 函数                                                              | 用途                                |
+| ---------- | ----------------------------------------------------------------- | ----------------------------------- |
+| Git/GitHub | `git()`, `gh()`, `ghAPI()`                                        | 操作仓库、调用 GitHub CLI 和 API    |
+| 文件操作   | `readFile()`, `glob()`, `rg()`, `lineCount()`, `head()`, `tail()` | 读取和搜索文件                      |
+| 网络       | `fetch()`, `fetchMd()`                                            | 抓取网页内容                        |
+| 变量       | `setVar()`, `getVar()`, `deleteVar()`                             | 跨轮次传递数据                      |
+| 上下文     | `ctx()`, `ctxGlob()`                                              | 读取前序步骤的输出                  |
+| 并发       | `parallel()`                                                      | 并行执行多个表达式（每次最多 5 个） |
+
+注意：虽然代码中有 `writeFile()` 和 `patchFile()`，但在代码审查类工作流中通过系统提示词明确禁止了文件写入。
+
+### 实际案例：wf-rlm-analyst（代码仓库分析）
+
+这是一个最能体现 RLM 价值的工作流——Agent 自主探索一个未知仓库并生成技术分析报告。
+
+**工作流定义：**
+
+```
+wf-rlm-analyst
+├── EnableRLM: true
+├── MaxSteps: 10
+├── EntryStep: explore
+│
+├── Step: explore (ai)
+│   └── Agent 自主决定采集哪些信息、用什么表达式
+│       → 输出 Markdown 分析报告
+│       → 提取到变量 analysis_report
+│
+└── Step: summary (ai)
+    └── 基于分析报告输出健康度评估
+        → 优势 3 条 / 风险 3 条 / 建议 3 条
+        → 结束
+```
+
+**关键：Agent 的采集策略是自主决定的。** 工作流不预设"先看什么、再看什么"，而是给 Agent 一个目标（"全面分析这个仓库"），Agent 通过 `eval_expr` 动态探索。
+
+**实际执行过程（以分析 coagent 仓库为例）：**
+
+第一轮，Agent 输出 PLAN_JSON 并执行：
+
+```json
+{"goal":"采集仓库基本信息","queries":["git('branch','-a')","git('log','--oneline','-5')","glob('*')"],"expected":"分支列表、最近提交、根目录结构"}
+```
+
+```
+eval_expr: git('branch', '-a')
+→ main, remotes/origin/main
+
+eval_expr: git('log', '--oneline', '-5')
+→ abc1234 feat: add workflow engine
+→ def5678 fix: session resume error
+→ ...
+
+eval_expr: glob('*')
+→ [cmd/, internal/, web/, go.mod, go.sum, ...]
+```
+
+第二轮，根据第一轮结果深入：
+
+```json
+{"goal":"识别技术栈和代码规模","queries":["readFile('go.mod',1,20)","parallel(lineCount('internal/copilot/workflow.go'), lineCount('internal/copilot/rlm.go'), lineCount('internal/api/router.go'))","rg('import','.','5')"],"expected":"依赖清单、核心文件行数、主要 import"}
+```
+
+```
+eval_expr: readFile('go.mod', 1, 20)
+→ module github.com/xxx/coagent
+  go 1.25
+  require github.com/github/copilot-sdk/go v0.x.x
+  ...
+
+eval_expr: parallel(lineCount(...), lineCount(...), lineCount(...))
+→ [2200, 850, 320]
+```
+
+第三轮，补充活跃度和 PR 状态：
+
+```json
+{"goal":"评估活跃度","queries":["gh('pr','list','--state','open','--json','number,title')","git('shortlog','-sn','--since=30.days')"],"expected":"开放PR列表、近30天贡献者"}
+```
+
+最终 Agent 汇总所有采集结果，输出完整的 Markdown 分析报告。然后进入 `summary` 步骤，提炼健康度评估。
+
+**对比普通模式（非 RLM）：**
+
+coagent 同时提供了 `wf-repo-analyst-native`（`EnableRLM: false`），使用原生工具完成同样的分析任务。区别在于：
+
+| 维度   | RLM 模式                      | 普通模式                           |
+| ------ | ----------------------------- | ---------------------------------- |
+| 工具   | `eval_expr`（受控函数集）     | `bash`/`view`/`grep`（原生工具）   |
+| 策略   | Agent 自主决定采集路径        | Agent 自主决定，但可执行任意 Shell |
+| 安全   | 无 Shell 执行、表达式长度限制 | 可执行任意命令                     |
+| 可审计 | 每个 `eval_expr` 调用独立记录 | Shell 命令混在一起                 |
+
+RLM 模式的核心优势：**每一步 Agent 的"思考→行动→观察"都是独立可追踪的**，而非一个黑盒 Shell 脚本。
+
+### 调用纪律：PLAN_JSON
+
+RLM 模式强制要求 Agent 在每轮 `eval_expr` 调用前输出一行 PLAN_JSON：
+
+```json
+{"goal":"本轮目标","queries":["expr1","expr2"],"expected":"预期产出"}
+```
+
+这不是可选的"最佳实践"，而是写在系统提示词中的强制规则。它的作用是：
+
+1. **可审计**：事后可以看到 Agent 每轮在想什么、打算做什么
+2. **可约束**：`queries` 最多 5 条，防止单轮过度扩散
+3. **可调试**：如果结果不对，从 PLAN_JSON 就能判断 Agent 的策略是否合理
+
+> **🎬 现场演示：** 启动 `wf-rlm-analyst` 工作流分析当前仓库，观察 Agent 的多轮自主探索过程、PLAN_JSON 输出、eval_expr 调用链。
 
 核心定位：**可控的动态能力**——在安全边界内赋予 Agent 运行时动态决策能力。
 
