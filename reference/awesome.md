@@ -21,3 +21,4 @@
 
 - 该仓库可作为 Skill 设计与目录组织的外部参考。
 - 需要补充更多参考项目时，可在本文件追加条目。
+- 掘金文章提取：[`agent-skills-40-resources-juejin.md`](./agent-skills-40-resources-juejin.md)
